@@ -1,61 +1,119 @@
 import sys
 import pandas as pd
 from sqlalchemy import create_engine
+import nltk,re
+nltk.download('punkt')
+nltk.download('wordnet')
+nltk.download('stopwords')
+from nltk.tokenize import word_tokenize
+from nltk.stem import WordNetLemmatizer 
+from nltk.corpus import stopwords
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.feature_extraction.text import CountVectorizer,TfidfTransformer
+from sklearn.multioutput import MultiOutputClassifier
+from sklearn.ensemble import RandomForestClassifier,AdaBoostClassifier
+from sklearn.pipeline import Pipeline,FeatureUnion
+from sklearn.model_selection import train_test_split
+import pickle
+from sklearn.metrics import classification_report
+import numpy as np
 
 
-def load_data(messages_filepath, categories_filepath):
-    messages = pd.read_csv(messages_filepath)
-    messages.drop_duplicates(subset=['id'],inplace = True)
+class Length(BaseEstimator, TransformerMixin):
     
-    categories = pd.read_csv(categories_filepath)
-    categories.drop_duplicates(subset=['id'],inplace = True)
+    def length(self,text):
+        
+        return len(text)
+    def fit(self, x, y=None):
+        return self
 
-    df = messages.merge(categories,on='id',how="left")
-    return df
+    def transform(self, X):
+        X_len = pd.Series(X).apply(self.length)
+        return pd.DataFrame(X_len)
     
-def clean_data(df):
-    categories = df['categories'].str.split(';',expand=True)
-    row = categories.iloc[0]
-    category_colnames = row.apply(lambda x: x.split('-')[0])
-    categories.columns = category_colnames
-    for column in categories:
-        categories[column] = categories[column].apply(lambda x: (x.split('-')[1]) )
-        categories[column] = categories[column].astype('int32')
-    df = df.drop('categories',axis = 1)
-    df = pd.concat([df,categories],axis=1)
-    df = df[df['related'] != 2]
+def load_data(database_filepath):
+    engine = create_engine('sqlite:///'+database_filepath)
+    df = pd.read_sql_table('Dataset',engine)
+    X =df['message']
+    Y = df[df.columns[4:]]
+    return X,Y,Y.columns.tolist()
+
+def tokenize(text):
+    text = re.sub("[^A-z0-9]+"," ",text)
+    text = text.lower()
+    words = word_tokenize(text)
+    words= [w for w in words if w not in stopwords.words("english")]
+    lemmatizer = WordNetLemmatizer()
+    lemmed = [lemmatizer.lemmatize(w).strip() for w in words]
     
-    return df
+    return lemmed
+
+
+def build_model():
+    pipeline = Pipeline([
+    ('features',FeatureUnion([
+        ('text_pipeline',Pipeline([
+            ('vect',CountVectorizer(tokenizer=tokenize)),
+            ('tfidf',TfidfTransformer(smooth_idf=False)),
+            
+        ])),
+        ('Length',Length())
+        
+    ])),
+    ('clf',MultiOutputClassifier(RandomForestClassifier()))
     
-def save_data(df, database_filename):
-    engine = create_engine('sqlite:///'+database_filename)
-    df.to_sql('Dataset', engine, index=False,if_exists='replace')
+    ])
+    return pipeline
+
+def report(y,yhat,classes):
+    results = []
+    for i in range(y.shape[1]):
+        t =(classification_report(y.iloc[:,i],yhat[:,i]))
+        f1=(float(t[-15:-11]))#f1
+        recall=(float(t[-25:-21]))#recall
+        precision=(float(t[-35:-31]))#precision
+        results.append([classes[i],precision,recall,f1])
+    results.append(['Average',np.average(precision),np.average(recall),np.average(f1)])
+    return pd.DataFrame(results,columns=['Classes','Precision','Recall','F1']).set_index('Classes')
+
+def evaluate_model(model, X_test, Y_test, category_names):
+    y_pred = model.predict(X_test)
+
+    cfr = report(Y_test,y_pred,category_names)
+    print(cfr)
+
+
+def save_model(model, model_filepath):
+    with open(model_filepath,'wb') as f:
+        pickle.dump(model,f)
 
 
 def main():
-    if len(sys.argv) == 4:
-
-        messages_filepath, categories_filepath, database_filepath = sys.argv[1:]
-
-        print('Loading data...\n    MESSAGES: {}\n    CATEGORIES: {}'
-              .format(messages_filepath, categories_filepath))
-        df = load_data(messages_filepath, categories_filepath)
-
-        print('Cleaning data...')
-        df = clean_data(df)
+    if len(sys.argv) == 3:
+        database_filepath, model_filepath = sys.argv[1:]
+        print('Loading data...\n    DATABASE: {}'.format(database_filepath))
+        X, Y, category_names = load_data(database_filepath)
+        X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2)
         
-        print('Saving data...\n    DATABASE: {}'.format(database_filepath))
-        save_data(df, database_filepath)
+        print('Building model...')
+        model = build_model()
         
-        print('Cleaned data saved to database!')
-    
+        print('Training model...')
+        model.fit(X_train, Y_train)
+        
+        print('Evaluating model...')
+        evaluate_model(model, X_test, Y_test, category_names)
+
+        print('Saving model...\n    MODEL: {}'.format(model_filepath))
+        save_model(model, model_filepath)
+
+        print('Trained model saved!')
+
     else:
-        print('Please provide the filepaths of the messages and categories '\
-              'datasets as the first and second argument respectively, as '\
-              'well as the filepath of the database to save the cleaned data '\
-              'to as the third argument. \n\nExample: python process_data.py '\
-              'disaster_messages.csv disaster_categories.csv '\
-              'DisasterResponse.db')
+        print('Please provide the filepath of the disaster messages database '\
+              'as the first argument and the filepath of the pickle file to '\
+              'save the model to as the second argument. \n\nExample: python '\
+              'train_classifier.py ../data/DisasterResponse.db classifier.pkl')
 
 
 if __name__ == '__main__':
