@@ -17,9 +17,14 @@ from sklearn.model_selection import train_test_split
 import pickle
 from sklearn.metrics import classification_report
 import numpy as np
+from sklearn.model_selection import GridSearchCV
+
 
 
 class Length(BaseEstimator, TransformerMixin):
+    """
+    To Add the length of message as a Feature
+    """
     
     def length(self,text):
         
@@ -32,6 +37,16 @@ class Length(BaseEstimator, TransformerMixin):
         return pd.DataFrame(X_len)
     
 def load_data(database_filepath):
+    """
+    Load Data from the Database
+    
+    Parameters:
+    database_filepath - Path to SQL Database
+    
+    Returns:
+    X - Features Dataframe
+    Y - Categories Dataframe
+    """
     engine = create_engine('sqlite:///'+database_filepath)
     df = pd.read_sql_table('Dataset',engine)
     X =df['message']
@@ -39,6 +54,13 @@ def load_data(database_filepath):
     return X,Y,Y.columns.tolist()
 
 def tokenize(text):
+    """
+    Tokenize the text
+    Parameters:
+    text - Text to be tokenized
+    Returns:
+    lemmed - Lemmatized tokens
+    """
     text = re.sub("[^A-z0-9]+"," ",text)
     text = text.lower()
     words = word_tokenize(text)
@@ -50,6 +72,20 @@ def tokenize(text):
 
 
 def build_model():
+    """
+    Build a Pipeline Function
+    
+    Returns:
+    cv - Best Model
+    """
+    parameters = {
+        
+        'clf__estimator__n_estimators': [50,100],
+        'clf__estimator__min_samples_split': [2,3],
+      
+    } 
+
+
     pipeline = Pipeline([
     ('features',FeatureUnion([
         ('text_pipeline',Pipeline([
@@ -63,9 +99,21 @@ def build_model():
     ('clf',MultiOutputClassifier(RandomForestClassifier()))
     
     ])
-    return pipeline
+    
+    cv =  GridSearchCV(pipeline, param_grid=parameters,cv=2)
+    return cv
 
 def report(y,yhat,classes):
+    """
+    Displays classification report for all categories
+    
+    Parameters:
+    y - list of labels
+    yhat - list of predictions
+    classes - list of categories
+    
+    
+    """
     results = []
     for i in range(y.shape[1]):
         t =(classification_report(y.iloc[:,i],yhat[:,i]))
@@ -77,6 +125,15 @@ def report(y,yhat,classes):
     return pd.DataFrame(results,columns=['Classes','Precision','Recall','F1']).set_index('Classes')
 
 def evaluate_model(model, X_test, Y_test, category_names):
+    """
+    Evaluate a Model Function
+    
+    Parameters:
+    model - Best Model
+    X_test - Test features
+    Y_test - Test Label
+    category_names - list of categories
+    """
     y_pred = model.predict(X_test)
 
     cfr = report(Y_test,y_pred,category_names)
@@ -84,11 +141,21 @@ def evaluate_model(model, X_test, Y_test, category_names):
 
 
 def save_model(model, model_filepath):
+    """
+    Save Pipeline Function
+    Parameters:
+    model - Model to be saved
+    model_filepath - destination path to save model as .pkl file
+    """
     with open(model_filepath,'wb') as f:
         pickle.dump(model,f)
 
 
 def main():
+    """
+    Main function to train classifier
+    
+    """
     if len(sys.argv) == 3:
         database_filepath, model_filepath = sys.argv[1:]
         print('Loading data...\n    DATABASE: {}'.format(database_filepath))

@@ -4,6 +4,17 @@ from sqlalchemy import create_engine
 
 
 def load_data(messages_filepath, categories_filepath):
+    """
+    To Load Data
+    
+    Parameters:
+    messages_filepath - filepath to messages data
+    categories_filepath  - filepath to categories data
+    
+    Returns:
+    Combined Dataframe with messages and categories
+    
+    """
     messages = pd.read_csv(messages_filepath)
     messages.drop_duplicates(subset=['id'],inplace = True)
     
@@ -14,6 +25,15 @@ def load_data(messages_filepath, categories_filepath):
     return df
     
 def clean_data(df):
+    """
+    Function to clean the data
+    
+    Parameters:
+    df - Dataframe to be cleaned
+    
+    Returns:
+    df - cleaned df
+    """
     categories = df['categories'].str.split(';',expand=True)
     row = categories.iloc[0]
     category_colnames = row.apply(lambda x: x.split('-')[0])
@@ -28,11 +48,22 @@ def clean_data(df):
     return df
     
 def save_data(df, database_filename):
+    """
+    To save data to a SQL database
+    
+    Parameters:
+    df - dataframe to be stored in database
+    database_filename - Name of the database
+    
+    """
     engine = create_engine('sqlite:///'+database_filename)
     df.to_sql('Dataset', engine, index=False,if_exists='replace')
 
 
 def main():
+    """
+    Main Function to clean the data for training and load it into a SQL Database
+    """
     if len(sys.argv) == 4:
 
         messages_filepath, categories_filepath, database_filepath = sys.argv[1:]

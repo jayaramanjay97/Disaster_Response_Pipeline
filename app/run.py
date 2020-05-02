@@ -13,7 +13,9 @@ from sqlalchemy import create_engine
 from sklearn.base import BaseEstimator, TransformerMixin
 
 class Length(BaseEstimator, TransformerMixin):
-    
+    """
+    To get Length of text to be used as a feature
+    """
     def length(self,text):
         
         return len(text)
@@ -27,6 +29,9 @@ class Length(BaseEstimator, TransformerMixin):
 app = Flask(__name__)
 
 def tokenize(text):
+    """
+    To tokenize the text
+    """
     tokens = word_tokenize(text)
     lemmatizer = WordNetLemmatizer()
 
@@ -54,7 +59,9 @@ def index():
     # TODO: Below is an example - modify to extract data for your own visuals
     genre_counts = df.groupby('genre').count()['message']
     genre_names = list(genre_counts.index)
-    
+    Y = df[df.columns[4:]]
+    cat_names = Y.columns
+    cat_vals = Y.mean().values*Y.shape[0]
     # create visuals
     # TODO: Below is an example - modify to create your own visuals
     graphs = [
@@ -75,7 +82,27 @@ def index():
                     'title': "Genre"
                 }
             }
+        },
+        {
+            'data': [
+                Bar(
+                    x=cat_names,
+                    y=cat_vals
+                )
+            ],
+
+            'layout': {
+                'title': 'Distribution of Message Categories',
+                'yaxis': {
+                    'title': "Count"
+                },
+                'xaxis': {
+                    'title': "Category"
+                }
+            }
         }
+        
+        
     ]
     
     # encode plotly graphs in JSON
