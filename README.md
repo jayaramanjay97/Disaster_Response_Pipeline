@@ -1,5 +1,5 @@
 # Disaster Response Pipeline Project
-Udacity project: Analyze disaster data from Figure Eight and build a model that classifies disaster messages.
+Analyze disaster data from Figure Eight and build a model that classifies disaster messages.
 
 ### Libraries Used:
 - pandas
